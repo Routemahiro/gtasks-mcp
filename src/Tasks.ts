@@ -86,7 +86,8 @@ export class TaskResources {
 
 export class TaskActions {
   private static formatTask(task: tasks_v1.Schema$Task) {
-    return `${task.title}\n (Due: ${task.due || "Not set"}) - Notes: ${task.notes} - ID: ${task.id} - Status: ${task.status} - URI: ${task.selfLink} - Hidden: ${task.hidden} - Parent: ${task.parent} - Deleted?: ${task.deleted} - Completed Date: ${task.completed} - Position: ${task.position} - Updated Date: ${task.updated} - ETag: ${task.etag} - Links: ${task.links} - Kind: ${task.kind}}`;
+    const taskListId = task.selfLink?.split('/lists/')[1]?.split('/')[0] || 'unknown';
+    return `${task.title}\n (Due: ${task.due || "Not set"}) - Notes: ${task.notes} - ID: ${task.id} - Status: ${task.status} - URI: ${task.selfLink} - TaskList: ${taskListId} - Hidden: ${task.hidden} - Parent: ${task.parent} - Deleted?: ${task.deleted} - Completed Date: ${task.completed} - Position: ${task.position} - Updated Date: ${task.updated} - ETag: ${task.etag} - Links: ${task.links} - Kind: ${task.kind}}`;
   }
 
   private static formatTaskList(taskList: tasks_v1.Schema$Task[]) {
@@ -272,6 +273,70 @@ export class TaskActions {
         {
           type: "text",
           text: `Tasks from tasklist ${taskListId} cleared`,
+        },
+      ],
+      isError: false,
+    };
+  }
+
+  static async listTaskLists(request: CallToolRequest, tasks: tasks_v1.Tasks) {
+    const taskListsResponse = await tasks.tasklists.list({
+      maxResults: MAX_TASK_RESULTS,
+    });
+
+    const taskLists = taskListsResponse.data.items || [];
+    const formattedLists = taskLists.map(list => 
+      `${list.title}\n ID: ${list.id} - Updated: ${list.updated}`
+    ).join('\n');
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Found ${taskLists.length} task lists:\n${formattedLists}`,
+        },
+      ],
+      isError: false,
+    };
+  }
+
+  static async moveTask(request: CallToolRequest, tasks: tasks_v1.Tasks) {
+    const sourceTaskListId = request.params.arguments?.sourceTaskListId as string;
+    const targetTaskListId = request.params.arguments?.targetTaskListId as string;
+    const taskId = request.params.arguments?.taskId as string;
+
+    if (!sourceTaskListId || !targetTaskListId || !taskId) {
+      throw new Error("Source task list ID, target task list ID, and task ID are required");
+    }
+
+    // 1. Get the task from the source list
+    const sourceTask = await tasks.tasks.get({
+      tasklist: sourceTaskListId,
+      task: taskId,
+    });
+
+    // 2. Create the task in the target list
+    const newTask = await tasks.tasks.insert({
+      tasklist: targetTaskListId,
+      requestBody: {
+        title: sourceTask.data.title,
+        notes: sourceTask.data.notes,
+        due: sourceTask.data.due,
+        status: sourceTask.data.status,
+      },
+    });
+
+    // 3. Delete the task from the source list
+    await tasks.tasks.delete({
+      tasklist: sourceTaskListId,
+      task: taskId,
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Task "${sourceTask.data.title}" moved from list ${sourceTaskListId} to list ${targetTaskListId}`,
         },
       ],
       isError: false,

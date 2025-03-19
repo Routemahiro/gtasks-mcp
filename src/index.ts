@@ -105,6 +105,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "listTaskLists",
+        description: "List all task lists in Google Tasks",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "moveTask",
+        description: "Move a task from one list to another",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sourceTaskListId: {
+              type: "string",
+              description: "Source task list ID",
+            },
+            targetTaskListId: {
+              type: "string",
+              description: "Target task list ID",
+            },
+            taskId: {
+              type: "string",
+              description: "Task ID to move",
+            },
+          },
+          required: ["sourceTaskListId", "targetTaskListId", "taskId"],
+        },
+      },
+      {
         name: "create",
         description: "Create a new task in Google Tasks",
         inputSchema: {
@@ -214,6 +244,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const taskResult = await TaskActions.list(request, tasks);
     return taskResult;
   }
+  if (request.params.name === "listTaskLists") {
+    const taskResult = await TaskActions.listTaskLists(request, tasks);
+    return taskResult;
+  }
+  if (request.params.name === "moveTask") {
+    const taskResult = await TaskActions.moveTask(request, tasks);
+    return taskResult;
+  }
   if (request.params.name === "create") {
     const taskResult = await TaskActions.create(request, tasks);
     return taskResult;
@@ -233,35 +271,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error("Tool not found");
 });
 
-const credentialsPath = path.join(
-  path.dirname(new URL(import.meta.url).pathname),
-  "../.gtasks-server-credentials.json",
-);
+const baseDir = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]):/, "$1:")), "..");
+const credentialsPath = path.join(baseDir, ".gtasks-server-credentials.json");
 
 async function authenticateAndSaveCredentials() {
   console.log("Launching auth flow…");
-  const p = path.join(
-    path.dirname(new URL(import.meta.url).pathname),
-    "../gcp-oauth.keys.json",
-  );
+  const p = path.join(baseDir, "gcp-oauth.keys.json");
 
-  console.log(p);
+  console.log("Using credentials from:", p);
   const auth = await authenticate({
     keyfilePath: p,
     scopes: ["https://www.googleapis.com/auth/tasks"],
   });
   fs.writeFileSync(credentialsPath, JSON.stringify(auth.credentials));
-  console.log("Credentials saved. You can now run the server.");
+  console.log("Credentials saved to:", credentialsPath);
+  console.log("You can now run the server.");
 }
 
 async function loadCredentialsAndRunServer() {
+  console.log("Loading credentials from:", credentialsPath);
   if (!fs.existsSync(credentialsPath)) {
     console.error(
       "Credentials not found. Please run with 'auth' argument first.",
     );
     process.exit(1);
   }
-
   const credentials = JSON.parse(fs.readFileSync(credentialsPath, "utf-8"));
   const auth = new google.auth.OAuth2();
   auth.setCredentials(credentials);
