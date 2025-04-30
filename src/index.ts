@@ -78,6 +78,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: "reauth",
+        description: "Google Tasksの認証情報をリセットして再認証を行います",
+        inputSchema: {
+          type: "object",
+          properties: {
+            random_string: {
+              type: "string",
+              description: "Dummy parameter for no-parameter tools",
+            },
+          },
+          required: ["random_string"],
+        },
+      },
+      {
         name: "search",
         description: "Search for a task in Google Tasks",
         inputSchema: {
@@ -236,6 +250,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name === "reauth") {
+    const credentialsPath = path.join(baseDir, ".gtasks-server-credentials.json");
+    if (fs.existsSync(credentialsPath)) {
+      fs.unlinkSync(credentialsPath);
+    }
+    await authenticateAndSaveCredentials();
+    return {
+      result: "認証情報をリセットし、新しい認証情報を取得しました。サーバーを再起動してください。",
+    };
+  }
   if (request.params.name === "search") {
     const taskResult = await TaskActions.search(request, tasks);
     return taskResult;
